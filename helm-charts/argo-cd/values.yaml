@@ -1,0 +1,10 @@
+global:
+  image:
+    tag: "v2.12.1"
+
+replicaCount: 1
+
+crds:
+  annotations:
+    meta.helm.sh/release-namespace: "argo-cd"
+    meta.helm.sh/release-name: "argo-cd"

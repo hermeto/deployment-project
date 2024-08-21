@@ -1,0 +1,48 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: go-app
+  namespace: argo-cd
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/hermeto/p2p-eigen-layer.git'
+    targetRevision: HEAD
+    path: helm-charts/app
+    helm:
+      valueFiles:
+        - values.yaml
+      parameters:
+        - name: replicaCount
+          value: "2"
+        - name: image.repository
+          value: "registry/go-app"
+        - name: image.tag
+          value: "latest"
+        - name: service.port
+          value: "80"
+        - name: autoscaling.enabled
+          value: "true"
+        - name: autoscaling.minReplicas
+          value: "1"
+        - name: autoscaling.maxReplicas
+          value: "5"
+        - name: autoscaling.targetCPUUtilizationPercentage
+          value: "80"
+        - name: livenessProbe.httpGet.path
+          value: "/healthz"
+        - name: livenessProbe.httpGet.port
+          value: "8080"
+        - name: readinessProbe.httpGet.path
+          value: "/readyz"
+        - name: readinessProbe.httpGet.port
+          value: "8080"
+  destination:
+    server: https://kubernetes.go-app.svc
+    namespace: go-app
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
