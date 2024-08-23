@@ -7,6 +7,7 @@ This guide will help you deploy ArgoCD on a local Kubernetes cluster using Helm,
 - A running Kubernetes cluster (Minikube, Kind, or any local Kubernetes setup).
 - `kubectl` installed and configured to connect to your cluster.
 - `Helm` installed.
+- `Helmfile` installed.
 
 ## Steps
 
@@ -17,7 +18,8 @@ Install ArgoCD using the Helm chart in your local Kubernetes cluster.
 ```bash
 cd helm-charts/argo-cd
 helm repo add argo https://argoproj.github.io/argo-helm
-helm install argo-cd argo/argo-cd --namespace argo-cd --create-namespace
+helmfile init
+helmfile apply
 ```
 
 This command installs ArgoCD in the `argo-cd` namespace. You can customize the installation by editing the `values.yaml` file before running the install command.
