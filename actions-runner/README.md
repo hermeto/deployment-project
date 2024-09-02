@@ -17,6 +17,7 @@ Follow the steps below to configure and start your self-hosted GitHub Actions ru
 1. **Create a folder for the runner:**
 
     ```bash
+    cd actions-runner
     mkdir runner && cd runner
     ```
 
