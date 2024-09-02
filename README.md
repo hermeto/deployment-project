@@ -83,8 +83,11 @@ As the project evolves, there are several enhancements that could be considered:
 
 This project includes documentation files to help you understand and work with the different components. Below is a list of the key documentation files available within the project, organized by directory.
 
-### 1. [ArgoCD Go Application](./argo-cd/applications/README.md)
+### 1. [ArgoCD Helm Chart](./helm-charts/argo-cd/README.md)
 
-### 2. [Application Helm Chart](./helm-charts/app/README.md)
+### 2. [ArgoCD Go Application](./argo-cd/applications/README.md)
 
-### 3. [ArgoCD Helm Chart](./helm-charts/argo-cd/README.md)
+### 3. [Self-Hosted GitHub Actions Runner Setup](./actions-runner/README.md)
+
+### 4. [Application Helm Chart](./helm-charts/app/README.md)
+
