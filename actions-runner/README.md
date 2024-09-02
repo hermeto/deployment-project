@@ -14,52 +14,15 @@ Follow the steps below to configure and start your self-hosted GitHub Actions ru
 
 ### 1. Download and Install the Runner
 
-1. **Create a folder for the runner:**
+1. **Enter the directory:**
 
     ```bash
     cd actions-runner
-    mkdir runner && cd runner
     ```
 
-2. **Download the latest runner package:**
+2. **Follow the documentation below to set up the runner locally according to your operating system:**
 
-    ```bash
-    curl -o actions-runner-osx-arm64-2.319.1.tar.gz -L https://github.com/actions/runner/releases/download/v2.319.1/actions-runner-osx-arm64-2.319.1.tar.gz
-    ```
-
-3. **(Optional) Validate the download:**
-
-    ```bash
-    echo "af6a2fba35cc63415693ebfb969b4d7a9d59158e1f3587daf498d0df534bf56f  actions-runner-osx-arm64-2.319.1.tar.gz" | shasum -a 256 -c
-    ```
-
-4. **Extract the installer:**
-
-    ```bash
-    tar xzf ./actions-runner-osx-arm64-2.319.1.tar.gz
-    ```
-
-### 2. Configure the Runner
-
-1. **Create the runner and start the configuration:**
-
-    ```bash
-    ./config.sh --url https://github.com/<your-username>/p2p-devops-test --token <your-token>
-    ```
-
-2. **Start the runner:**
-
-    ```bash
-    ./run.sh
-    ```
-
-### 3. Using Your Self-Hosted Runner
-
-Add the following to your GitHub Actions workflow YAML to ensure that jobs run on this self-hosted runner:
-
-```yaml
-runs-on: self-hosted
-```
+    https://github.com/<your-username\>/p2p-devops-test/settings/actions/runners/new
 
 ## Additional Information
 
