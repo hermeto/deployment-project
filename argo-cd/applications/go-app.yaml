@@ -21,6 +21,8 @@ spec:
           value: "latest"
         - name: service.port
           value: "80"
+        - name: service.targetPort
+          value: "3000"
         - name: autoscaling.enabled
           value: "true"
         - name: autoscaling.minReplicas
