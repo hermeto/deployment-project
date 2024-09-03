@@ -32,13 +32,13 @@ spec:
         - name: livenessProbe.httpGet.path
           value: "/healthz"
         - name: livenessProbe.httpGet.port
-          value: "8080"
+          value: "3000"
         - name: readinessProbe.httpGet.path
           value: "/readyz"
         - name: readinessProbe.httpGet.port
-          value: "8080"
+          value: "3000"
   destination:
-    server: https://kubernetes.go-app.svc
+    server: https://kubernetes.default.svc
     namespace: go-app
   syncPolicy:
     automated:
