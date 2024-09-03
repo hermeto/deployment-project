@@ -16,7 +16,7 @@ spec:
         - name: replicaCount
           value: "2"
         - name: image.repository
-          value: "registry/go-app"
+          value: "hermeto/go-app"
         - name: image.tag
           value: "latest"
         - name: service.port
