@@ -22,7 +22,7 @@ Follow the steps below to configure and start your self-hosted GitHub Actions ru
 
 2. **Follow the documentation below to set up the runner locally according to your operating system:**
 
-    https://github.com/<your-username\>/p2p-devops-test/settings/actions/runners/new
+    https://github.com/<your-username\>/deployment-project/settings/actions/runners/new
 
 ## Additional Information
 
