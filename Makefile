@@ -72,7 +72,8 @@ helm-lint: ## helm lint both charts, the app chart once per environment
 
 .PHONY: helm-unittest
 helm-unittest: ## Run the helm-unittest suites of both charts
-	docker run --rm --user "$$(id -u):$$(id -g)" -v "$(CURDIR):/apps" -w /apps $(HELM_UNITTEST_IMAGE) $(APP_CHART) $(ROOT_CHART)
+	@# Runs as the calling user so that files it writes stay owned by them; HOME must be writable for Helm's cache.
+	docker run --rm --user "$$(id -u):$$(id -g)" -e HOME=/tmp -v "$(CURDIR):/apps" -w /apps $(HELM_UNITTEST_IMAGE) $(APP_CHART) $(ROOT_CHART)
 
 $(ARGOCD_CHART_DIR):
 	mkdir -p $(BUILD_DIR)/charts

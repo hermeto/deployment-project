@@ -48,7 +48,7 @@ retry() {
 work=$(mktemp -d)
 pf_pid=""
 cleanup() {
-  [[ -n "$pf_pid" ]] && kill "$pf_pid" 2>/dev/null || true
+  if [[ -n "$pf_pid" ]]; then kill "$pf_pid" 2>/dev/null || true; fi
   rm -rf "$work"
 }
 trap cleanup EXIT
