@@ -1,0 +1,15 @@
+apiVersion: v2
+name: go-app
+description: Sample Go HTTP service — Deployment, Service, HPA, PodDisruptionBudget, NetworkPolicy and optional Ingress, hardened by default.
+type: application
+# Chart version: bump on every change to the chart (SemVer).
+version: 1.0.0
+# Default image tag (image.tag overrides it): keep in sync with the application release.
+appVersion: "1.0.0"
+kubeVersion: ">=1.30.0-0"
+home: https://github.com/hermeto/deployment-project
+sources:
+  - https://github.com/hermeto/deployment-project/tree/main/app
+maintainers:
+  - name: hermeto
+    url: https://github.com/hermeto

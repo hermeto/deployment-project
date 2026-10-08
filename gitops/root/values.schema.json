@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "root values",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["repo", "destinationServer", "argocd", "goApp"],
+  "properties": {
+    "global": { "type": "object" },
+    "repo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "revision"],
+      "properties": {
+        "url": { "type": "string", "pattern": "^(https?|git|ssh)://|^git@" },
+        "revision": { "type": "string", "minLength": 1 }
+      }
+    },
+    "destinationServer": { "type": "string", "pattern": "^https://" },
+    "argocd": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selfManaged", "chart", "valuesFile"],
+      "properties": {
+        "selfManaged": { "type": "boolean" },
+        "chart": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repoURL", "name", "version"],
+          "properties": {
+            "repoURL": { "type": "string", "minLength": 1 },
+            "name": { "type": "string", "minLength": 1 },
+            "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" }
+          }
+        },
+        "valuesFile": { "type": "string", "minLength": 1 }
+      }
+    },
+    "goApp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chartPath", "environments"],
+      "properties": {
+        "chartPath": { "type": "string", "minLength": 1 },
+        "environments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "namespace"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", "maxLength": 30 },
+              "namespace": { "type": "string", "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", "maxLength": 63 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

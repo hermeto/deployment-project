@@ -1,0 +1,17 @@
+{{ include "go-app.fullname" . }} {{ include "go-app.version" . }} is deployed in namespace {{ .Release.Namespace }}.
+
+Check the rollout:
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "go-app.fullname" . }}
+
+{{- if .Values.ingress.enabled }}
+
+URL(s):
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}{{ (first .paths).path }}
+{{- end }}
+{{- else }}
+
+Reach it locally:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "go-app.fullname" . }} 8080:{{ .Values.service.port }}
+  curl http://localhost:8080/
+{{- end }}

@@ -1,0 +1,45 @@
+{{- range .Values.goApp.environments }}
+---
+# go-app in the {{ .name }} environment: charts/go-app with environments/{{ .name }}/values.yaml.
+# The resources finalizer deletes the workload when the environment is removed from values.yaml.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: go-app-{{ .name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "root.labels" $ | nindent 4 }}
+    app.kubernetes.io/name: go-app
+    environment: {{ .name }}
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: go-app
+  source:
+    repoURL: {{ $.Values.repo.url | quote }}
+    targetRevision: {{ $.Values.repo.revision | quote }}
+    path: {{ $.Values.goApp.chartPath }}
+    helm:
+      releaseName: go-app
+      valueFiles:
+        - {{ printf "%s/environments/%s/values.yaml" (regexReplaceAll "[^/]+" $.Values.goApp.chartPath "..") .name }}
+  destination:
+    server: {{ $.Values.destinationServer | quote }}
+    namespace: {{ .namespace | quote }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+    # The namespace enforces the `restricted` Pod Security Standard: a pod that is not hardened is rejected.
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/enforce-version: latest
+        pod-security.kubernetes.io/warn: restricted
+        pod-security.kubernetes.io/audit: restricted
+    {{- include "root.retry" $ | nindent 4 }}
+  revisionHistoryLimit: 10
+{{- end }}

@@ -1,0 +1,38 @@
+{{- if .Values.argocd.selfManaged }}
+# Argo CD manages its own installation: the chart comes from the argo-helm repository, the values from this
+# repository (multi-source Application), the same file `make bootstrap` installs with.
+# No resources finalizer and no automated pruning: Argo CD must never delete itself.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "root.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: platform
+  sources:
+    - repoURL: {{ .Values.argocd.chart.repoURL | quote }}
+      chart: {{ .Values.argocd.chart.name }}
+      targetRevision: {{ .Values.argocd.chart.version | quote }}
+      helm:
+        releaseName: argocd
+        valueFiles:
+          - $values/{{ .Values.argocd.valuesFile }}
+    - repoURL: {{ .Values.repo.url | quote }}
+      targetRevision: {{ .Values.repo.revision | quote }}
+      ref: values
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Release.Namespace | quote }}
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      # The Argo CD CRDs exceed the size limit of the last-applied-configuration annotation.
+      - ServerSideApply=true
+    {{- include "root.retry" . | nindent 4 }}
+{{- end }}

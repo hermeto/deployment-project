@@ -1,0 +1,32 @@
+# The app-of-apps manages itself: changing this chart in Git updates every Application, including this one.
+# No resources finalizer: deleting `root` must never cascade to Argo CD or the workloads.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "root.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.repo.url | quote }}
+    targetRevision: {{ .Values.repo.revision | quote }}
+    path: gitops/root
+    helm:
+      releaseName: root
+      # Only the repository is passed down; everything else comes from gitops/root/values.yaml in Git.
+      valuesObject:
+        repo:
+          url: {{ .Values.repo.url | quote }}
+          revision: {{ .Values.repo.revision | quote }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Release.Namespace | quote }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    {{- include "root.retry" . | nindent 4 }}

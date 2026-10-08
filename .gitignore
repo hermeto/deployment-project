@@ -1,3 +1,20 @@
-actions-runner/actions-runner/
+# Build output (pulled charts, rendered manifests)
+build/
+
+# helm-unittest snapshot directories (no snapshot tests are used)
+__snapshot__/
+
+# Go
+app/go-app
+*.test
+*.out
+
+# Local configuration and secrets
+.env
+kubeconfig*
+*.key
+
+# Editors / OS
+.idea/
+.vscode/
 .DS_Store
-actions-runner/.DS_Store

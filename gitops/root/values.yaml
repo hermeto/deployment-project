@@ -1,0 +1,38 @@
+# Root of the GitOps tree: everything Argo CD deploys is declared here.
+#
+# `make bootstrap` installs Argo CD and applies the `root` Application once; from then on Argo CD renders this
+# chart from Git and keeps the AppProjects and Applications (including `root` itself) in sync.
+
+# -- Git repository and revision that every Application tracks. The e2e test overrides both to point Argo CD at
+# an in-cluster Git server holding the working tree under test.
+repo:
+  url: https://github.com/hermeto/deployment-project.git
+  revision: main
+
+# -- Kubernetes API server of the cluster Argo CD deploys to.
+destinationServer: https://kubernetes.default.svc
+
+argocd:
+  # -- Let Argo CD manage its own installation: upgrades and configuration changes go through Git.
+  selfManaged: true
+  chart:
+    # -- Helm repository of the argo-cd chart.
+    repoURL: https://argoproj.github.io/argo-helm
+    # -- Chart name.
+    name: argo-cd
+    # -- Chart version. `make bootstrap` installs this exact version; Renovate bumps it.
+    # renovate: datasource=helm registryUrl=https://argoproj.github.io/argo-helm depName=argo-cd
+    version: 10.10.0
+  # -- Values file of the argo-cd chart, relative to the repository root.
+  valuesFile: gitops/argocd/values.yaml
+
+goApp:
+  # -- Path of the application chart, relative to the repository root.
+  chartPath: charts/go-app
+  # -- One Application per environment, with its values in environments/<name>/values.yaml.
+  # @default -- dev and prod
+  environments:
+    - name: dev
+      namespace: go-app-dev
+    - name: prod
+      namespace: go-app-prod

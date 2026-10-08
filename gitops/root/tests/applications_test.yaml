@@ -1,0 +1,160 @@
+suite: applications
+templates:
+  - templates/root.yaml
+  - templates/argocd.yaml
+  - templates/go-app.yaml
+release:
+  name: root
+  namespace: argocd
+tests:
+  - it: root renders itself and passes the repository down
+    template: templates/root.yaml
+    set:
+      repo.url: git://git-server.git-server.svc.cluster.local/deployment-project.git
+      repo.revision: e2e
+    asserts:
+      - equal:
+          path: spec.source
+          value:
+            repoURL: git://git-server.git-server.svc.cluster.local/deployment-project.git
+            targetRevision: e2e
+            path: gitops/root
+            helm:
+              releaseName: root
+              valuesObject:
+                repo:
+                  url: git://git-server.git-server.svc.cluster.local/deployment-project.git
+                  revision: e2e
+      - equal:
+          path: spec.project
+          value: platform
+
+  - it: root never cascades deletions
+    template: templates/root.yaml
+    asserts:
+      - notExists:
+          path: metadata.finalizers
+      - equal:
+          path: spec.syncPolicy.automated
+          value:
+            prune: true
+            selfHeal: true
+
+  - it: Argo CD manages itself from the pinned chart and the values in Git
+    template: templates/argocd.yaml
+    asserts:
+      - equal:
+          path: spec.sources
+          value:
+            - repoURL: https://argoproj.github.io/argo-helm
+              chart: argo-cd
+              targetRevision: 10.10.0
+              helm:
+                releaseName: argocd
+                valueFiles:
+                  - $values/gitops/argocd/values.yaml
+            - repoURL: https://github.com/hermeto/deployment-project.git
+              targetRevision: main
+              ref: values
+      - equal:
+          path: spec.destination.namespace
+          value: argocd
+
+  - it: Argo CD never prunes or deletes itself
+    template: templates/argocd.yaml
+    asserts:
+      - notExists:
+          path: metadata.finalizers
+      - equal:
+          path: spec.syncPolicy.automated.prune
+          value: false
+      - contains:
+          path: spec.syncPolicy.syncOptions
+          content: ServerSideApply=true
+
+  - it: self-management can be turned off
+    template: templates/argocd.yaml
+    set:
+      argocd.selfManaged: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders one go-app Application per environment
+    template: templates/go-app.yaml
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: metadata.name
+          value: go-app-dev
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: go-app-prod
+        documentIndex: 1
+
+  - it: deploys the chart with the environment values into the environment namespace
+    template: templates/go-app.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.project
+          value: go-app
+      - equal:
+          path: spec.source
+          value:
+            repoURL: https://github.com/hermeto/deployment-project.git
+            targetRevision: main
+            path: charts/go-app
+            helm:
+              releaseName: go-app
+              valueFiles:
+                - ../../environments/prod/values.yaml
+      - equal:
+          path: spec.destination
+          value:
+            server: https://kubernetes.default.svc
+            namespace: go-app-prod
+
+  - it: enforces the restricted Pod Security Standard on the namespace it creates
+    template: templates/go-app.yaml
+    documentIndex: 0
+    asserts:
+      - contains:
+          path: spec.syncPolicy.syncOptions
+          content: CreateNamespace=true
+      - equal:
+          path: spec.syncPolicy.managedNamespaceMetadata.labels["pod-security.kubernetes.io/enforce"]
+          value: restricted
+
+  - it: syncs automatically and cleans up when an environment is removed
+    template: templates/go-app.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.syncPolicy.automated
+          value:
+            prune: true
+            selfHeal: true
+      - contains:
+          path: metadata.finalizers
+          content: resources-finalizer.argocd.argoproj.io
+
+  - it: rejects invalid environment names
+    template: templates/go-app.yaml
+    set:
+      goApp.environments:
+        - name: Prod_EU
+          namespace: go-app-prod-eu
+    asserts:
+      - failedTemplate:
+          errorPattern: "/goApp/environments/0/name"
+
+  - it: rejects a chart version that is not pinned
+    template: templates/argocd.yaml
+    set:
+      argocd.chart.version: "10.*"
+    asserts:
+      - failedTemplate:
+          errorPattern: "/argocd/chart/version"

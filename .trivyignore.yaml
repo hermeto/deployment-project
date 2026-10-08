@@ -1,0 +1,13 @@
+# Accepted findings of `trivy config` (make security). Every entry needs a justification.
+misconfigurations:
+  - id: KSV-0125
+    paths:
+      - charts/go-app/templates/deployment.yaml
+    statement: >-
+      ghcr.io is where this repository publishes the go-app image (release workflow); trivy's built-in list of
+      trusted registries does not include it. Override image.repository to pull from a mirror.
+  - id: KSV-0125
+    paths:
+      - e2e/git-server.yaml
+    statement: >-
+      Test-only Git server, deployed on throwaway kind clusters by the e2e test; the image is pinned by digest.

@@ -1,0 +1,77 @@
+# Values for the argo-cd Helm chart (https://github.com/argoproj/argo-helm/tree/main/charts/argo-cd).
+#
+# The same file is used twice, so the bootstrap install and the self-managed install never drift:
+#   1. `make bootstrap` installs Argo CD with Helm (release "argocd", namespace "argocd");
+#   2. the `argocd` Application (gitops/root/templates/argocd.yaml) then manages Argo CD from Git.
+# The chart version is pinned in gitops/root/values.yaml (argocd.chart.version).
+
+global:
+  # Domain of the Argo CD UI. Used to build the external URL (SSO callbacks, notification links).
+  domain: argocd.localhost
+  logging:
+    format: json
+  networkPolicy:
+    # Ingress NetworkPolicies for every Argo CD component.
+    create: true
+
+configs:
+  cm:
+    # Local admin account: fine for a local cluster. With SSO configured, disable it.
+    admin.enabled: true
+    # No `kubectl exec` from the UI.
+    exec.enabled: false
+    # Track resources with an annotation instead of the app.kubernetes.io/instance label, which Helm charts set too.
+    application.resourceTrackingMethod: annotation
+  params:
+    # Serve the API/UI over TLS (self-signed by default). Terminate TLS in front of it with a real certificate
+    # (Ingress/Gateway) for anything beyond a local cluster.
+    server.insecure: false
+  rbac:
+    # Users authenticated through SSO get no access unless a policy grants it.
+    policy.default: ""
+
+# Not used: no SSO and no notification services are configured. Enable them together with their configuration.
+dex:
+  enabled: false
+notifications:
+  enabled: false
+
+controller:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+repoServer:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+server:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+applicationSet:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+redis:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi

@@ -1,0 +1,78 @@
+# AppProjects: what each group of Applications may deploy, from where and to where.
+#
+# Argo CD itself and the app-of-apps. Cluster-scoped resources are needed to manage Argo CD (CRDs, ClusterRoles).
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "root.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  description: Argo CD and the root app-of-apps
+  sourceRepos:
+    - {{ .Values.repo.url | quote }}
+    - {{ .Values.argocd.chart.repoURL | quote }}
+  destinations:
+    - server: {{ .Values.destinationServer | quote }}
+      namespace: {{ .Release.Namespace | quote }}
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+---
+# go-app: only this repository, only its own namespaces and only the kinds the chart renders.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: go-app
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "root.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  description: go-app in every environment
+  sourceRepos:
+    - {{ .Values.repo.url | quote }}
+  destinations:
+    {{- range .Values.goApp.environments }}
+    - server: {{ $.Values.destinationServer | quote }}
+      namespace: {{ .namespace | quote }}
+    {{- end }}
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: apps
+      kind: Deployment
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+    - group: policy
+      kind: PodDisruptionBudget
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: networking.k8s.io
+      kind: Ingress
+---
+# The built-in `default` project allows any source and destination. Lock it down so that every Application has
+# to belong to one of the projects above.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: default
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "root.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  description: Disabled — use a dedicated project
+  sourceRepos: []
+  destinations: []
+  clusterResourceWhitelist: []
