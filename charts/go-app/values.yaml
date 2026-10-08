@@ -1,0 +1,181 @@
+# Default values for go-app. Every key is validated by values.schema.json:
+# a typo or an unknown key fails `helm template`/`helm install` instead of being silently ignored.
+
+# -- Override the chart name used in resource names and labels.
+nameOverride: ""
+# -- Override the full resource name (default: the release name, suffixed with the chart name unless it already contains it).
+fullnameOverride: ""
+
+image:
+  # -- Image repository.
+  repository: ghcr.io/hermeto/go-app
+  # -- Image tag. Defaults to the chart appVersion. Mutable tags such as `latest` are rejected: with GitOps, a new
+  # version must be a change in Git, and nodes would keep running a stale cached image.
+  tag: ""
+  # -- Image digest (`sha256:...`). When set, it takes precedence over the tag.
+  digest: ""
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+
+# -- Secrets used to pull the image from a private registry.
+imagePullSecrets: []
+
+# -- Number of replicas. Ignored when autoscaling is enabled (the HPA owns the replica count).
+replicaCount: 2
+
+# -- Port the application listens on. Passed to the container as `PORT`; probes and the Service use the named port `http`.
+containerPort: 3000
+
+# Graceful shutdown. After SIGTERM the application fails /readyz and keeps serving for `delaySeconds` so that the
+# endpoints are updated before it stops accepting connections, then gives in-flight requests `timeoutSeconds`.
+# terminationGracePeriodSeconds is derived from both (+5s).
+shutdown:
+  # -- Seconds to keep serving after SIGTERM (`SHUTDOWN_DELAY`).
+  delaySeconds: 5
+  # -- Seconds in-flight requests get to finish (`SHUTDOWN_TIMEOUT`).
+  timeoutSeconds: 20
+
+# -- Application log level: debug, info, warn or error (`LOG_LEVEL`).
+logLevel: info
+
+# -- Extra environment variables for the container.
+env: []
+
+serviceAccount:
+  # -- Create a dedicated ServiceAccount.
+  create: true
+  # -- Name of the ServiceAccount to use (default: the full name when created, `default` otherwise).
+  name: ""
+  # -- ServiceAccount annotations (e.g. for workload identity).
+  annotations: {}
+  # -- Mount the ServiceAccount token. The application does not call the Kubernetes API.
+  automountToken: false
+
+# -- Extra pod annotations.
+podAnnotations: {}
+# -- Extra pod labels.
+podLabels: {}
+
+# -- Pod security context. Compliant with the `restricted` Pod Security Standard.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container security context. Compliant with the `restricted` Pod Security Standard.
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  privileged: false
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  # -- Service type.
+  type: ClusterIP
+  # -- Service port.
+  port: 80
+  # -- Service annotations.
+  annotations: {}
+
+ingress:
+  # -- Create an Ingress.
+  enabled: false
+  # -- IngressClass name.
+  className: ""
+  # -- Ingress annotations.
+  annotations: {}
+  # -- Hosts and paths routed to the Service.
+  hosts:
+    - host: go-app.local
+      paths:
+        - path: /
+          pathType: Prefix
+  # -- TLS configuration.
+  tls: []
+
+# -- Resource requests and limits. No CPU limit on purpose: it causes throttling while the node has idle CPU;
+# the request guarantees the share. Memory limit = request avoids overcommit.
+resources:
+  requests:
+    cpu: 50m
+    memory: 32Mi
+  limits:
+    memory: 32Mi
+
+# -- Startup probe: gives the application time to start before liveness kicks in.
+startupProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 2
+  timeoutSeconds: 2
+  failureThreshold: 30
+
+# -- Liveness probe: restarts the container when it stops answering.
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 10
+  timeoutSeconds: 2
+  failureThreshold: 3
+
+# -- Readiness probe: removes the pod from the Service while starting or shutting down.
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  periodSeconds: 5
+  timeoutSeconds: 2
+  failureThreshold: 2
+
+autoscaling:
+  # -- Create a HorizontalPodAutoscaler (replicaCount is then ignored).
+  enabled: false
+  # -- Minimum replicas. Keep at least 2 for availability during node drains.
+  minReplicas: 2
+  # -- Maximum replicas.
+  maxReplicas: 5
+  # -- Target average CPU utilization, as a percentage of the CPU request.
+  targetCPUUtilizationPercentage: 80
+  # -- Target average memory utilization (percentage of the request); null disables the metric.
+  targetMemoryUtilizationPercentage: null
+  # -- HPA scaling behavior (scaleUp/scaleDown policies).
+  behavior: {}
+
+podDisruptionBudget:
+  # -- Create a PodDisruptionBudget so that voluntary disruptions (drains, upgrades) evict one pod at a time.
+  enabled: true
+  # -- Maximum unavailable pods during a voluntary disruption.
+  maxUnavailable: 1
+
+networkPolicy:
+  # -- Create a NetworkPolicy: ingress only on the HTTP port, egress only to DNS (plus `extraEgress`).
+  enabled: true
+  # -- Peers allowed to reach the HTTP port (NetworkPolicyPeer list). Empty allows every source.
+  ingressFrom: []
+  # -- Extra egress rules (NetworkPolicyEgressRule list), e.g. for databases or external APIs.
+  extraEgress: []
+
+# -- Topology spread constraints. The pod selector is added automatically when `labelSelector` is omitted.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+
+# -- Number of old ReplicaSets to keep for rollbacks.
+revisionHistoryLimit: 5
+
+# -- Node selector.
+nodeSelector: {}
+# -- Tolerations.
+tolerations: []
+# -- Affinity rules.
+affinity: {}
+# -- PriorityClass name.
+priorityClassName: ""

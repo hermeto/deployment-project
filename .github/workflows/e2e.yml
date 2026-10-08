@@ -1,0 +1,53 @@
+name: e2e
+
+# Builds the image, creates a kind cluster, pushes the commit under test to an in-cluster Git server, bootstraps
+# Argo CD against it and runs the end-to-end tests (scripts/e2e.sh). Nothing is pushed to GitHub or to a registry.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HELM_VERSION: v4.3.0
+  KIND_VERSION: v0.33.0
+
+jobs:
+  kind:
+    name: kind (Argo CD + go-app, GitOps end to end)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - uses: helm/kind-action@v1
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Create the cluster, bootstrap Argo CD, run the end-to-end tests
+        run: make e2e
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl get nodes -o wide || true
+          kubectl get pods -A -o wide || true
+          kubectl -n argocd get applications -o wide || true
+          kubectl -n argocd get applications -o yaml | grep -A30 '^  status:' || true
+          kubectl get events -A --sort-by=.lastTimestamp | tail -n 100 || true
+          kubectl -n argocd logs statefulset/argocd-application-controller --tail=200 || true
+          kubectl -n argocd logs deployment/argocd-repo-server --tail=200 || true
+
+      - name: Tear down
+        if: always()
+        run: make local-down

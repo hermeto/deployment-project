@@ -1,93 +1,154 @@
 # Go App Deployment Project
 
-## Overview
+[![ci](https://github.com/hermeto/deployment-project/actions/workflows/ci.yml/badge.svg)](https://github.com/hermeto/deployment-project/actions/workflows/ci.yml)
+[![e2e](https://github.com/hermeto/deployment-project/actions/workflows/e2e.yml/badge.svg)](https://github.com/hermeto/deployment-project/actions/workflows/e2e.yml)
 
-This project contains the necessary configuration to deploy a Go application in a Kubernetes cluster using ArgoCD and Helm. The project follows a monorepo structure to simplify the deployment process, allowing for centralized management of all related components, including the application code, Helm charts, and infrastructure configuration.
+GitOps delivery of a Go service to Kubernetes with [Argo CD](https://argo-cd.readthedocs.io/) and Helm. Git is the
+single source of truth: Argo CD installs itself, the application and every environment from this repository, and
+keeps the cluster converged on it. The whole pipeline runs on a local [kind](https://kind.sigs.k8s.io/) cluster, so it
+can be tested end to end without a cloud account — CI does exactly that on every pull request.
 
-## Monorepo Structure
+## What you get
 
-The project is organized as a monorepo, which means that all related code, configuration files, and scripts are stored in a single repository. This approach was chosen to simplify the development and deployment process, particularly for this test scenario where simplicity and clarity are key requirements.
+| Area | Highlights |
+| --- | --- |
+| **Application** | Small Go HTTP service (`/`, `/healthz`, `/readyz`) with graceful shutdown: readiness fails first, in-flight requests drain. Static binary on a distroless, non-root image (~4 MB). |
+| **Helm chart** | Values validated by a JSON schema (typos and mutable tags such as `latest` fail the render), a single named port used by the Service and every probe, startup/liveness/readiness probes, HPA that owns the replica count, PodDisruptionBudget, NetworkPolicy, topology spreading, optional Ingress. |
+| **Security** | `restricted` Pod Security Standard enforced on every application namespace; read-only root filesystem, no capabilities, no service-account token; dedicated AppProjects with an explicit resource allow-list; the `default` project is disabled; `trivy`, `hadolint` and `gitleaks` in CI and pre-commit. |
+| **GitOps** | App of apps: one `root` Application manages the AppProjects, Argo CD itself (pinned chart, upgrades through Git) and one Application per environment. Automated sync with self-heal and pruning, retries with backoff. |
+| **Environments** | `dev` and `prod` from the same chart with per-environment values; promotion is a pull request that bumps the image tag. |
+| **Delivery** | `make check` runs every static test; `make e2e` deploys on kind and proves the GitOps loop works (sync, self-heal, a Git change reaching the cluster); `release` publishes multi-arch images to GHCR; Renovate keeps versions current. |
 
-### Project Structure
+## Architecture
 
-```plaintext
-.
-├── README.md                             # Root project documentation
-├── argo-cd                               # ArgoCD configuration directory
-│   └── applications                      # Directory for ArgoCD Application manifests
-│       ├── README.md                     # Documentation for ArgoCD applications
-│       └── go-app.yaml                   # ArgoCD Application manifest for the Go app
-└── helm-charts                           # Directory for Helm charts
-    ├── app                               # Helm chart for the Go application
-    │   ├── Chart.yaml                    # Metadata for the Go app Helm chart
-    │   ├── README.md                     # Documentation for the Go app Helm chart
-    │   ├── templates                     # Directory for Kubernetes resource templates
-    │   │   ├── _helpers.tpl              # Helper template functions
-    │   │   ├── deployment.yaml           # Deployment resource template
-    │   │   ├── hpa.yaml                  # Horizontal Pod Autoscaler (HPA) resource template
-    │   │   └── service.yaml              # Service resource template
-    │   └── values.yaml                   # Default configuration values for the Go app
-    └── argo-cd                           # Helm chart for ArgoCD configuration
-        ├── Chart.yaml                    # Metadata for the ArgoCD Helm chart
-        ├── README.md                     # Documentation for the ArgoCD Helm chart
-        ├── helmfile.yaml                 # Helmfile for managing ArgoCD installation
-        └── values.yaml                   # Default configuration values for ArgoCD
+```mermaid
+flowchart LR
+  dev["Developer"] -- pull request --> git[("GitHub<br/>deployment-project")]
+  git -- tag v1.2.3 --> release["release workflow"] -- push --> ghcr[("ghcr.io/hermeto/go-app")]
+
+  subgraph cluster["Kubernetes cluster"]
+    subgraph argocd["namespace: argocd"]
+      root["Application root<br/>(gitops/root)"]
+      self["Application argocd<br/>(argo-cd chart)"]
+      appdev["Application go-app-dev"]
+      appprod["Application go-app-prod"]
+    end
+    subgraph nsdev["namespace: go-app-dev"]
+      d1["go-app"]
+    end
+    subgraph nsprod["namespace: go-app-prod"]
+      p1["go-app + HPA + PDB"]
+    end
+  end
+
+  git -- watched by --> root
+  root -- creates --> self & appdev & appprod
+  appdev -- syncs --> d1
+  appprod -- syncs --> p1
+  ghcr -. image .-> d1 & p1
 ```
 
-### Why Monorepo?
+More detail and the reasoning behind the design (including the monorepo trade-offs) in
+[docs/architecture.md](docs/architecture.md); how a change travels from a commit to the cluster in
+[docs/gitops.md](docs/gitops.md).
 
-- **Simplicity**: By keeping all related files in one place, the complexity of managing multiple repositories is avoided, making the setup easier to understand and use.
-- **Consistency**: Changes to the application, infrastructure, or deployment configuration can be synchronized and tested together, reducing the risk of inconsistencies.
-- **Single Source of Truth**: All components related to the deployment are centralized, providing a clear view of the entire deployment pipeline.
+## Repository layout
 
-## Trade-offs
+```text
+.
+├── app/                    Go service: source, unit tests, Dockerfile
+├── charts/go-app/          Helm chart of the service (+ values.schema.json, tests/ for helm-unittest)
+├── environments/
+│   ├── dev/values.yaml     per-environment values: image tag, replicas, autoscaling...
+│   └── prod/values.yaml
+├── gitops/
+│   ├── argocd/values.yaml  Argo CD configuration (used by the bootstrap and by Argo CD managing itself)
+│   └── root/               app of apps: AppProjects + Applications (+ tests/)
+├── e2e/git-server.yaml     in-cluster Git server used by the e2e test only
+├── kind/cluster.yaml       local cluster definition
+├── scripts/                bootstrap, smoke tests, e2e test
+├── docs/                   architecture, GitOps workflow, operations, CI
+└── Makefile                every workflow: `make help`
+```
 
-While the monorepo approach has several advantages, there are also trade-offs to consider:
+## Requirements
 
-### Pros
+| Tool | Version | Used for |
+| --- | --- | --- |
+| [Docker](https://docs.docker.com/get-docker/) | any recent | image build, kind, hadolint, helm-unittest |
+| [kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) | >= 0.33 | local cluster |
+| [kubectl](https://kubernetes.io/docs/tasks/tools/) | any recent | bootstrap and tests |
+| [Helm](https://helm.sh/docs/intro/install/) | >= 3.14 (CI uses 4.3) | bootstrap, chart checks |
+| [Go](https://go.dev/dl/) | 1.27 | application |
+| [golangci-lint](https://golangci-lint.run/), [kubeconform](https://github.com/yannh/kubeconform), [trivy](https://trivy.dev/), [shellcheck](https://www.shellcheck.net/), `jq` | latest | static checks |
 
-1. **Ease of Use**: All necessary components are in one place, reducing the need to navigate between different repositories.
-2. **Coordinated Changes**: Updates to the application, infrastructure, and CI/CD pipeline can be managed together, reducing the chance of mismatches or missed updates.
-3. **Simplified Versioning**: A single version control history ensures that all changes are tracked together, simplifying the process of rolling back or auditing changes.
+`make tools` reports what is missing.
 
-### Cons
+## Quick start: local (kind)
 
-1. **Scalability**: As the project grows, the monorepo can become harder to manage, especially if the number of services, microservices, or infrastructure components increases significantly.
-2. **Longer CI/CD Pipelines**: Changes to any part of the monorepo may trigger the CI/CD pipeline, even if the change is unrelated to certain components. This can lead to longer build times.
-3. **Potential for Merge Conflicts**: With multiple developers working in the same repository, the likelihood of merge conflicts can increase, particularly if many files are being modified simultaneously.
+```bash
+make e2e         # kind cluster + image + Argo CD + the whole GitOps tree, then the end-to-end tests
+make argocd-ui   # admin password, and the UI on https://localhost:8080 (self-signed certificate)
+make local-down  # delete the cluster
+```
 
-## Future Improvements
+`make e2e` does not need GitHub: it pushes a snapshot of your working tree, uncommitted changes included, to a Git
+server inside the cluster and points Argo CD at it. The tests ([`scripts/e2e.sh`](scripts/e2e.sh),
+[`scripts/smoke-test.sh`](scripts/smoke-test.sh)) prove that the GitOps loop works, not just that pods run: every
+Application is Synced and Healthy, the service answers through its Service from another namespace with the version
+Git declares, privileged pods are rejected, a resource deleted by hand is restored by Argo CD, and a commit that
+changes the dev replica count is rolled out.
 
-As the project evolves, there are several enhancements that could be considered:
+## Deploy to a cluster
 
-### 1. **Modularization**
+Prerequisites, once:
 
-- **Sub-repos or Git Submodules**: As the project grows, consider splitting the monorepo into smaller, more manageable sub-repositories or using Git submodules to maintain modularity while still benefiting from a monorepo-like structure.
+1. Publish the image: push the tag matching the chart `appVersion` (`git tag v1.0.0 && git push origin v1.0.0`).
+   The [release workflow](.github/workflows/release.yml) pushes `ghcr.io/hermeto/go-app:1.0.0`. Make the GHCR
+   package public, or add `imagePullSecrets` in `environments/*/values.yaml`.
+2. Using a fork? Set `repo.url` in [`gitops/root/values.yaml`](gitops/root/values.yaml) to your repository. For a
+   private repository, register its credentials in Argo CD first
+   ([docs/operations.md](docs/operations.md#private-repository)).
 
-### 2. **Improved CI/CD Efficiency**
+Then, with `kubectl` pointing at the cluster:
 
-- **Selective Builds**: Implement logic in the CI/CD pipeline to trigger builds only for the parts of the project that have been modified. This can reduce build times and resource consumption.
-- **Pipeline Parallelization**: Parallelize different stages of the CI/CD pipeline to speed up deployments, particularly when handling multiple services or components.
+```bash
+make bootstrap KUBE_CONTEXT=<context>   # installs Argo CD and applies the root Application
+make smoke     KUBE_CONTEXT=<context>   # waits for every Application and checks each environment
+```
 
-### 3. **Advanced Infrastructure Management**
+From then on, the cluster follows `main`. Bootstrapping is needed once per cluster; Argo CD upgrades itself when
+the chart version in `gitops/root/values.yaml` changes. Access, credentials, rollbacks and troubleshooting:
+[docs/operations.md](docs/operations.md).
 
-- **Infrastructure as Code (IaC)**: As the infrastructure grows, consider introducing more advanced IaC tools (e.g., Terraform, Pulumi) to manage infrastructure changes in a more scalable and repeatable manner.
-- **Environment-Specific Configurations**: Introduce environment-specific Helm values files (e.g., for staging, production) to allow for more granular control over how the application is deployed in different environments.
+## Delivering changes
 
-### 4. **Monitoring and Alerts**
+| Change | How |
+| --- | --- |
+| Application code | Pull request → merge → bump `appVersion` in `charts/go-app/Chart.yaml` → tag `vX.Y.Z` (publishes the image) → bump `image.tag` in `environments/dev/values.yaml`, then in `prod` once validated. |
+| Configuration of an environment | Pull request on `environments/<env>/values.yaml`. |
+| Chart | Pull request on `charts/go-app` (bump the chart `version`); covered by `helm-unittest` and the e2e test. |
+| New environment | Add `environments/<name>/values.yaml` and an entry in `goApp.environments` in `gitops/root/values.yaml`. |
+| Argo CD | Pull request on `gitops/argocd/values.yaml` or `argocd.chart.version` (Renovate opens these). |
 
-- **Integrate Monitoring**: Add monitoring tools (e.g., Prometheus, Grafana) to keep track of application performance and resource usage.
-- **Set Up Alerts**: Configure alerting mechanisms to notify the team of any issues or anomalies in the application or infrastructure.
+Nobody runs `kubectl apply` or `helm upgrade` against the cluster after the bootstrap: manual changes are reverted by
+self-heal. Details in [docs/gitops.md](docs/gitops.md).
 
-## Documentation Overview
+## Testing
 
-This project includes documentation files to help you understand and work with the different components. Below is a list of the key documentation files available within the project, organized by directory.
+| Command | What it proves | Needs |
+| --- | --- | --- |
+| `make go-fmt go-lint go-test` | gofmt, `go vet`, golangci-lint; unit tests with the race detector (config, handlers, graceful shutdown) | Go, golangci-lint |
+| `make docker-lint` | hadolint on the Dockerfile | Docker |
+| `make helm-lint` | `helm lint --strict` of both charts, the app chart with every environment's values | Helm |
+| `make helm-unittest` | 60 helm-unittest cases: hardening, naming, ports, HPA/replicas, schema rejections, environments, AppProjects, Applications | Docker |
+| `make helm-render` | What Argo CD deploys (each environment, root, the pinned Argo CD chart with our values) passes `kubeconform -strict` | Helm, kubeconform |
+| `make test-scripts` | shellcheck | shellcheck |
+| `make security` | trivy misconfiguration scan of the Dockerfile, charts and manifests | trivy |
+| `make image-scan` | trivy vulnerability scan of the image | Docker, trivy |
+| `make check` | all of the above except `image-scan` (CI runs it too) | |
+| `make e2e` | the full GitOps loop on kind (see above) | kind, Docker, Helm |
 
-### 1. [ArgoCD Helm Chart](./helm-charts/argo-cd/README.md)
+## Contributing
 
-### 2. [ArgoCD Go Application](./argo-cd/applications/README.md)
-
-### 3. [Self-Hosted GitHub Actions Runner Setup](./actions-runner/README.md)
-
-### 4. [Application Helm Chart](./helm-charts/app/README.md)
-
+See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues: [SECURITY.md](SECURITY.md). Changes: [CHANGELOG.md](CHANGELOG.md).

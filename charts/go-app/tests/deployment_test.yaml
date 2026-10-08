@@ -1,0 +1,241 @@
+suite: deployment
+templates:
+  - templates/deployment.yaml
+release:
+  name: go-app
+  namespace: go-app-dev
+tests:
+  - it: uses the chart appVersion as the default image tag
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/hermeto/go-app:1.0.0
+      - equal:
+          path: metadata.labels["app.kubernetes.io/version"]
+          value: "1.0.0"
+
+  - it: prefers the digest over the tag
+    set:
+      image.tag: "2.0.0"
+      image.digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/hermeto/go-app@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+  - it: names resources after the release without repeating the chart name
+    asserts:
+      - equal:
+          path: metadata.name
+          value: go-app
+
+  - it: suffixes the chart name to other release names
+    release:
+      name: dev
+    asserts:
+      - equal:
+          path: metadata.name
+          value: dev-go-app
+
+  - it: honours fullnameOverride
+    set:
+      fullnameOverride: web
+    asserts:
+      - equal:
+          path: metadata.name
+          value: web
+
+  - it: selects pods by name and instance, never by version
+    asserts:
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: go-app
+            app.kubernetes.io/instance: go-app
+      - isSubset:
+          path: spec.template.metadata.labels
+          content:
+            app.kubernetes.io/name: go-app
+            app.kubernetes.io/instance: go-app
+
+  - it: exposes a single named port, used by every probe and passed to the app as PORT
+    set:
+      containerPort: 8080
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports
+          value:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PORT
+            value: "8080"
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet
+          value: { path: /healthz, port: http }
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet
+          value: { path: /healthz, port: http }
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+          value: { path: /readyz, port: http }
+
+  - it: is hardened for the restricted Pod Security Standard
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: [ALL]
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+      - equal:
+          path: spec.template.spec.enableServiceLinks
+          value: false
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: go-app
+
+  - it: sets replicas when autoscaling is disabled
+    set:
+      replicaCount: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+
+  - it: leaves replicas to the HPA when autoscaling is enabled
+    set:
+      autoscaling.enabled: true
+    asserts:
+      - notExists:
+          path: spec.replicas
+
+  - it: never takes capacity down during a rollout
+    asserts:
+      - equal:
+          path: spec.strategy.rollingUpdate.maxUnavailable
+          value: 0
+
+  - it: derives the grace period and shutdown settings from shutdown.*
+    set:
+      shutdown.delaySeconds: 10
+      shutdown.timeoutSeconds: 30
+    asserts:
+      - equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 45
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: SHUTDOWN_DELAY, value: "10s" }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: SHUTDOWN_TIMEOUT, value: "30s" }
+
+  - it: sets GOMEMLIMIT from the memory limit
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOMEMLIMIT
+            valueFrom:
+              resourceFieldRef:
+                resource: limits.memory
+
+  - it: omits GOMEMLIMIT without a memory limit
+    set:
+      resources.limits: null
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOMEMLIMIT
+            valueFrom:
+              resourceFieldRef:
+                resource: limits.memory
+
+  - it: appends extra environment variables
+    set:
+      env:
+        - name: FEATURE_X
+          value: "on"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: FEATURE_X, value: "on" }
+
+  - it: adds the pod selector to topology spread constraints
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0]
+          value:
+            maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: ScheduleAnyway
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: go-app
+                app.kubernetes.io/instance: go-app
+            matchLabelKeys: [pod-template-hash]
+
+  - it: keeps an explicit topology label selector
+    set:
+      topologySpreadConstraints:
+        - maxSkew: 2
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              team: web
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].labelSelector
+          value:
+            matchLabels:
+              team: web
+
+  - it: renders no optional pod fields by default
+    asserts:
+      - notExists:
+          path: spec.template.spec.nodeSelector
+      - notExists:
+          path: spec.template.spec.tolerations
+      - notExists:
+          path: spec.template.spec.affinity
+      - notExists:
+          path: spec.template.spec.imagePullSecrets
+      - notExists:
+          path: spec.template.metadata.annotations
+
+  - it: rejects minReplicas greater than maxReplicas
+    set:
+      autoscaling.enabled: true
+      autoscaling.minReplicas: 6
+      autoscaling.maxReplicas: 5
+    asserts:
+      - failedTemplate:
+          errorPattern: "minReplicas \\(6\\) must not be greater than autoscaling.maxReplicas \\(5\\)"
+
+  - it: rejects CPU autoscaling without a CPU request
+    set:
+      autoscaling.enabled: true
+      resources.requests: null
+    asserts:
+      - failedTemplate:
+          errorPattern: "requires resources.requests.cpu"

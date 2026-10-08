@@ -1,0 +1,47 @@
+suite: values schema
+templates:
+  - templates/deployment.yaml
+tests:
+  - it: rejects mutable image tags
+    set:
+      image.tag: latest
+    asserts:
+      - failedTemplate:
+          errorPattern: "/image/tag"
+
+  - it: rejects malformed digests
+    set:
+      image.digest: sha256:abc
+    asserts:
+      - failedTemplate:
+          errorPattern: "/image/digest"
+
+  - it: rejects unknown top-level keys (typos are not silently ignored)
+    set:
+      replicaCont: 3
+    asserts:
+      - failedTemplate:
+          errorPattern: "replicaCont"
+
+  - it: rejects the removed service.targetPort (the Service always targets the named port)
+    set:
+      service.targetPort: 3000
+    asserts:
+      - failedTemplate:
+          errorPattern: "targetPort"
+
+  - it: rejects overriding the variables the chart manages
+    set:
+      env:
+        - name: PORT
+          value: "8080"
+    asserts:
+      - failedTemplate:
+          errorPattern: "/env/0/name"
+
+  - it: rejects an unknown log level
+    set:
+      logLevel: trace
+    asserts:
+      - failedTemplate:
+          errorPattern: "/logLevel"

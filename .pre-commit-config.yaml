@@ -1,0 +1,40 @@
+# Install once with `pre-commit install`; run on everything with `pre-commit run -a`.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: detect-private-key
+      - id: check-json
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        # Helm templates are not plain YAML.
+        exclude: ^(charts/[^/]+|gitops/root)/templates/
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+
+  - repo: local
+    hooks:
+      - id: gofmt
+        name: gofmt
+        entry: make go-fmt
+        language: system
+        files: ^app/.*\.go$
+        pass_filenames: false
+      - id: helm-lint
+        name: helm lint
+        entry: make helm-lint
+        language: system
+        files: ^(charts|gitops/root|environments)/
+        pass_filenames: false

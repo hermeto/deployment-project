@@ -1,0 +1,94 @@
+suite: app projects
+templates:
+  - templates/projects.yaml
+release:
+  name: root
+  namespace: argocd
+tests:
+  - it: renders the platform, go-app and default projects
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: metadata.name
+          value: platform
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: go-app
+        documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: default
+        documentIndex: 2
+
+  - it: creates the projects before the Applications that use them
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "-2"
+
+  - it: limits go-app to this repository and to the environment namespaces
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.sourceRepos
+          value: [https://github.com/hermeto/deployment-project.git]
+      - equal:
+          path: spec.destinations
+          value:
+            - server: https://kubernetes.default.svc
+              namespace: go-app-dev
+            - server: https://kubernetes.default.svc
+              namespace: go-app-prod
+      - equal:
+          path: spec.clusterResourceWhitelist
+          value:
+            - group: ""
+              kind: Namespace
+      - notContains:
+          path: spec.namespaceResourceWhitelist
+          content:
+            group: rbac.authorization.k8s.io
+            kind: Role
+          any: true
+
+  - it: follows the environments list
+    documentIndex: 1
+    set:
+      goApp.environments:
+        - name: staging
+          namespace: go-app-staging
+    asserts:
+      - equal:
+          path: spec.destinations
+          value:
+            - server: https://kubernetes.default.svc
+              namespace: go-app-staging
+
+  - it: allows the platform project to pull the Argo CD chart and deploy only to the Argo CD namespace
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.sourceRepos
+          value:
+            - https://github.com/hermeto/deployment-project.git
+            - https://argoproj.github.io/argo-helm
+      - equal:
+          path: spec.destinations
+          value:
+            - server: https://kubernetes.default.svc
+              namespace: argocd
+
+  - it: disables the default project
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.sourceRepos
+          value: []
+      - equal:
+          path: spec.destinations
+          value: []
+      - equal:
+          path: spec.clusterResourceWhitelist
+          value: []

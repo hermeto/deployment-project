@@ -1,0 +1,12 @@
+# go-app in the dev environment (namespace go-app-dev), merged over charts/go-app/values.yaml.
+# Deploy a new version by changing image.tag (or image.digest) here first, then promote it to prod.
+
+image:
+  tag: "1.0.0"
+
+replicaCount: 1
+logLevel: debug
+
+# A single replica: nothing to protect during drains.
+podDisruptionBudget:
+  enabled: false

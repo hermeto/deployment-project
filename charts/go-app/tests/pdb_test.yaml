@@ -1,0 +1,26 @@
+suite: pod disruption budget
+templates:
+  - templates/pdb.yaml
+release:
+  name: go-app
+tests:
+  - it: evicts one pod at a time by default
+    asserts:
+      - equal:
+          path: spec.maxUnavailable
+          value: 1
+      - equal:
+          path: spec.unhealthyPodEvictionPolicy
+          value: AlwaysAllow
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: go-app
+            app.kubernetes.io/instance: go-app
+
+  - it: can be disabled
+    set:
+      podDisruptionBudget.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

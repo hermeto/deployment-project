@@ -1,0 +1,39 @@
+suite: service
+templates:
+  - templates/service.yaml
+release:
+  name: go-app
+tests:
+  - it: targets the named container port
+    asserts:
+      - equal:
+          path: spec.ports
+          value:
+            - name: http
+              port: 80
+              targetPort: http
+              protocol: TCP
+              appProtocol: http
+      - equal:
+          path: spec.selector
+          value:
+            app.kubernetes.io/name: go-app
+            app.kubernetes.io/instance: go-app
+
+  - it: supports other types and ports
+    set:
+      service.type: LoadBalancer
+      service.port: 8080
+      service.annotations:
+        example.com/lb: internal
+    asserts:
+      - equal:
+          path: spec.type
+          value: LoadBalancer
+      - equal:
+          path: spec.ports[0].port
+          value: 8080
+      - equal:
+          path: metadata.annotations
+          value:
+            example.com/lb: internal

@@ -1,0 +1,52 @@
+# The environment values files in environments/ against the chart: what Argo CD deploys.
+suite: environments
+templates:
+  - templates/deployment.yaml
+  - templates/hpa.yaml
+  - templates/pdb.yaml
+release:
+  name: go-app
+tests:
+  - it: dev runs one replica with debug logs and no PDB
+    values:
+      - ../../../environments/dev/values.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: LOG_LEVEL, value: debug }
+        template: templates/deployment.yaml
+      - hasDocuments:
+          count: 0
+        template: templates/hpa.yaml
+      - hasDocuments:
+          count: 0
+        template: templates/pdb.yaml
+
+  - it: prod is autoscaled from 2 replicas and protected by a PDB
+    values:
+      - ../../../environments/prod/values.yaml
+    asserts:
+      - notExists:
+          path: spec.replicas
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.minReplicas
+          value: 2
+        template: templates/hpa.yaml
+      - equal:
+          path: spec.maxUnavailable
+          value: 1
+        template: templates/pdb.yaml
+
+  - it: every environment pins an immutable image version
+    values:
+      - ../../../environments/prod/values.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: ^ghcr\.io/hermeto/go-app(:[0-9]+\.[0-9]+\.[0-9]+|@sha256:[a-f0-9]{64})$
+        template: templates/deployment.yaml
